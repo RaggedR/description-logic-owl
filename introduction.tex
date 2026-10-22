@@ -1,0 +1,296 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+
+% --- notation ---------------------------------------------------------------
+\newcommand{\I}{\mathcal{I}}                 % interpretation
+\newcommand{\dom}{\Delta^{\I}}               % domain
+\newcommand{\interp}[1]{#1^{\I}}             % interpretation of #1
+\newcommand{\concept}[1]{\ensuremath{\mathsf{#1}}}% concept name
+\newcommand{\role}[1]{\ensuremath{\mathsf{#1}}}   % role name
+\newcommand{\dl}[1]{\ensuremath{\mathcal{#1}}}% DL family letters
+\newcommand{\sub}{\sqsubseteq}
+\newcommand{\inter}{\sqcap}
+\newcommand{\unin}{\sqcup}
+\newcommand{\topc}{\top}
+\newcommand{\botc}{\bot}
+
+\theoremstyle{definition}
+\newtheorem{example}{Example}
+
+\title{\bfseries Description Logic, OWL, and Semantic Reasoning\\[2pt]
+       \large A Brief Introduction}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+\vspace{-2.5em}
+
+\begin{abstract}
+\noindent These notes introduce \emph{description logics} (DLs), the family of
+decidable fragments of first-order logic that underpins the Web Ontology
+Language (OWL) and, more broadly, automated reasoning over structured
+knowledge. We give the syntax and model-theoretic semantics, decode the
+compositional naming scheme (\dl{ALC}, \dl{S}, \dl{SHIN}, \dl{SHOIQ},
+\dl{SROIQ}), state the standard reasoning tasks and their mutual reducibility,
+sketch the tableau method that decides them, and summarise the complexity
+landscape that motivates the OWL~2 profiles.
+\end{abstract}
+
+\section{What problem are we solving?}
+
+Suppose we want a machine to \emph{draw conclusions} from a body of knowledge
+--- not merely to store and retrieve facts, but to infer facts never explicitly
+written down. If we assert that every \concept{Mother} is a \concept{Woman}
+with at least one child, and that \concept{Alice} is a \concept{Mother}, the
+machine should conclude \concept{Alice} is a \concept{Woman} and that she has a
+child, \emph{even if no such child is named.}
+
+Full first-order logic can express all of this, but its entailment problem is
+\emph{undecidable}: no algorithm is guaranteed to halt with the right answer.
+Description logics are a deliberate retreat. They carve out fragments
+expressive enough for real ontologies --- taxonomies in biology and medicine,
+product catalogues, the Semantic Web --- while keeping entailment
+\emph{decidable}, and ideally practical. The art of the field is choosing
+\emph{which} language features to admit, because each one costs computationally.
+
+\section{Syntax: concepts, roles, individuals}
+
+A DL vocabulary (a \emph{signature}) has three kinds of name:
+\begin{itemize}[nosep]
+  \item \textbf{concept names} (unary predicates): \concept{Woman},
+        \concept{Mother}, \concept{Disease} --- these denote \emph{sets};
+  \item \textbf{role names} (binary predicates): \role{hasChild},
+        \role{partOf} --- these denote \emph{relations};
+  \item \textbf{individual names} (constants): \concept{Alice}, \concept{Bob}.
+\end{itemize}
+
+From atomic concepts we build \emph{complex} concepts with constructors. The
+baseline language \dl{ALC} (\emph{Attributive Language with Complement}) offers:
+\[
+  C, D \;::=\; A \mid \topc \mid \botc \mid \lnot C \mid C \inter D
+          \mid C \unin D \mid \exists R.C \mid \forall R.C,
+\]
+where $A$ is a concept name and $R$ a role. Read $\exists R.C$ as ``has some
+$R$-filler lying in $C$'' and $\forall R.C$ as ``all $R$-fillers lie in $C$''.
+
+An ontology is split into two parts:
+\begin{itemize}[nosep]
+  \item the \textbf{TBox} (terminology): general axioms $C \sub D$ (``$C$ is
+        subsumed by $D$'') and definitions $C \equiv D$;
+  \item the \textbf{ABox} (assertions): facts $C(a)$ and $R(a,b)$ about named
+        individuals.
+\end{itemize}
+
+\begin{example}
+The TBox axiom
+\[
+  \concept{Mother} \;\equiv\; \concept{Woman} \inter \exists\,\role{hasChild}.\concept{Person}
+\]
+\emph{defines} a mother as a woman with at least one child who is a person.
+With the ABox fact $\concept{Mother}(\concept{Alice})$, a reasoner derives
+$\concept{Woman}(\concept{Alice})$.
+\end{example}
+
+\section{Semantics: everything is sets and relations}
+
+The meaning of a DL is Tarskian and strikingly simple. An
+\textbf{interpretation} $\I = (\dom, \cdot^{\I})$ consists of a non-empty
+\emph{domain} $\dom$ together with an interpretation function $\cdot^{\I}$ that maps
+\[
+  \text{concept } C \mapsto \interp{C} \subseteq \dom, \qquad
+  \text{role } R \mapsto \interp{R} \subseteq \dom \times \dom, \qquad
+  \text{individual } a \mapsto \interp{a} \in \dom.
+\]
+The constructors are interpreted exactly as their names suggest:
+\[
+  \interp{\topc} = \dom, \quad \interp{\botc} = \varnothing, \quad
+  \interp{(\lnot C)} = \dom \setminus \interp{C}, \quad
+  \interp{(C \inter D)} = \interp{C} \cap \interp{D},
+\]
+\[
+  \interp{(\exists R.C)} = \{\, x \mid \exists y.\, (x,y)\in\interp{R}
+        \ \wedge\ y \in \interp{C} \,\}, \qquad
+  \interp{(\forall R.C)} = \{\, x \mid \forall y.\, (x,y)\in\interp{R}
+        \ \rightarrow\ y \in \interp{C} \,\}.
+\]
+An interpretation $\I$ \emph{satisfies} an axiom $C \sub D$ iff
+$\interp{C} \subseteq \interp{D}$, and satisfies $C(a)$ iff
+$\interp{a} \in \interp{C}$. A \textbf{model} of an ontology is an
+interpretation satisfying \emph{all} its axioms and assertions. Reasoning means
+asking what holds in \emph{every} model.
+
+Two semantic conventions are worth flagging, because they surprise newcomers:
+\begin{itemize}[nosep]
+  \item \textbf{Open-world assumption (OWA).} What is not entailed is
+        \emph{unknown}, not false. If the ABox does not say Alice has a
+        daughter, the reasoner does not conclude she has none.
+  \item \textbf{No unique-name assumption (by default).} Two individual names
+        may denote the same domain element unless an axiom forbids it. This
+        interacts sharply with number restrictions (below).
+\end{itemize}
+
+\section{The naming scheme is a bill of materials}
+
+DL names are not arbitrary labels: each letter is a feature flag, and the name
+lists exactly which constructors the logic admits. The usual base is \dl{S},
+itself shorthand for
+\[
+  \dl{S} \;=\; \dl{ALC} + \text{transitive roles } (R^{+}),
+\]
+so named because transitive roles (\role{partOf}, \role{ancestorOf}) are
+ubiquitous. Additional letters extend \dl{S}:
+
+\begin{center}
+\begin{tabular}{@{}cll@{}}
+\toprule
+Letter & Feature & OWL vocabulary \\
+\midrule
+$\dl{H}$ & role \textbf{H}ierarchies ($R \sub S$)                 & \texttt{rdfs:subPropertyOf} \\
+$\dl{O}$ & nominals: singleton / enumerated classes $\{a\}$        & \texttt{owl:oneOf}, \texttt{owl:hasValue} \\
+$\dl{I}$ & \textbf{I}nverse roles ($R^{-}$)                        & \texttt{owl:inverseOf} \\
+$\dl{N}$ & unqualified \textbf{N}umber restrictions $(\geq n\,R)$  & \texttt{owl:cardinality} \\
+$\dl{Q}$ & \textbf{Q}ualified number restrictions $(\geq n\,R.C)$  & \texttt{owl:qualifiedCardinality} \\
+$\dl{F}$ & \textbf{F}unctional roles                               & \texttt{owl:FunctionalProperty} \\
+$\dl{R}$ & complex \textbf{R}ole inclusions (chains), (ir)reflexivity & \texttt{owl:propertyChainAxiom} \\
+$(\dl{D})$ & concrete \textbf{D}atatypes (integers, strings, \dots) & datatype properties \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The logics named in these notes now decode on sight:
+\begin{itemize}[nosep]
+  \item $\dl{SHIN} = \dl{S} + \dl{H} + \dl{I} + \dl{N}$: hierarchies, inverse
+        roles, unqualified cardinalities --- but \emph{no} nominals.
+  \item $\dl{SHOIQ} = \dl{S} + \dl{H} + \dl{O} + \dl{I} + \dl{Q}$: adds
+        nominals and upgrades to \emph{qualified} cardinalities.
+  \item $\dl{SHOIN}(\dl{D})$ is the logic behind \textbf{OWL\,1 DL}; it differs
+        from $\dl{SHOIQ}$ only in using unqualified $\dl{N}$ instead of $\dl{Q}$.
+  \item $\dl{SROIQ}(\dl{D})$ is the logic behind \textbf{OWL\,2 DL}: $\dl{SHOIQ}$
+        with $\dl{H}$ generalised to the richer role box $\dl{R}$.
+\end{itemize}
+
+The step from $\dl{N}$ to $\dl{Q}$ looks cosmetic but is not: $\geq 2\,
+\role{hasChild}$ merely counts children, whereas $\geq 2\,
+\role{hasChild}.\concept{Female}$ counts children \emph{of a given kind}. Since
+$\geq n\,R$ is $\geq n\,R.\topc$, qualified restrictions strictly subsume
+unqualified ones --- which is why $\dl{N}$ and $\dl{Q}$ never appear together.
+
+\section{Reasoning tasks --- and why one engine suffices}
+
+Over a given ontology, the standard decision problems are:
+\begin{description}[nosep,style=nextline]
+  \item[Consistency] Does the ontology have any model at all?
+  \item[Concept satisfiability] Is there a model in which $\interp{C} \neq
+        \varnothing$?
+  \item[Subsumption] Is $\interp{C} \subseteq \interp{D}$ in \emph{every}
+        model (written $C \sub D$)?
+  \item[Instance checking] Does $\interp{a} \in \interp{C}$ hold in every model?
+  \item[Classification / realization] Compute the full subsumption lattice of
+        named concepts / the most specific types of each individual.
+\end{description}
+
+The organising fact of the field is that these all \textbf{reduce to
+(un)satisfiability}, provided the logic has negation:
+\[
+  C \sub D \quad\Longleftrightarrow\quad C \inter \lnot D \text{ is unsatisfiable},
+  \qquad
+  a : C \quad\Longleftrightarrow\quad \text{ABox} \cup \{\lnot C(a)\} \text{ is inconsistent}.
+\]
+A reasoner therefore needs only \emph{one} core engine --- a satisfiability
+test --- and everything else is a wrapper around it.
+
+\section{How the engine works: tableau}
+
+The dominant decision procedure is the \textbf{tableau algorithm}. To test
+whether $C$ is satisfiable, it attempts to \emph{build a model}: a graph of
+labelled nodes (individuals) and labelled edges (role fillers), grown by
+repeatedly applying expansion rules to the node labels $L(x)$:
+\begin{itemize}[nosep]
+  \item $\inter$-rule: if $C \inter D \in L(x)$, add both $C$ and $D$ to $L(x)$;
+  \item $\unin$-rule: if $C \unin D \in L(x)$, \emph{nondeterministically} add
+        $C$ or $D$ --- this branching is the source of exponential cost;
+  \item $\exists$-rule: if $\exists R.C \in L(x)$, create a fresh $R$-successor
+        $y$ with $C \in L(y)$;
+  \item $\forall$-rule: if $\forall R.C \in L(x)$ and $x$ has an $R$-successor
+        $y$, add $C$ to $L(y)$.
+\end{itemize}
+A branch \emph{clashes} when $\{A, \lnot A\} \subseteq L(x)$ and is abandoned.
+If some branch saturates without a clash, it witnesses a model and $C$ is
+satisfiable; if every branch clashes, $C$ is unsatisfiable.
+
+Two subtleties are exactly where the easy and hard logics part company:
+\begin{itemize}[nosep]
+  \item \textbf{Termination needs blocking.} Transitive roles and $\exists$
+        can generate infinite successor chains. When a new node's label repeats
+        that of an ancestor, the node is \emph{blocked} and reuses the earlier
+        witness. Inverse roles force the more delicate \emph{pairwise} blocking,
+        since a successor can constrain its predecessor retroactively.
+  \item \textbf{Nominals break the tree-model property.} Without $\dl{O}$,
+        every logic here enjoys the \emph{tree-model property}: a satisfiable
+        concept has a tree-shaped model, and trees are precisely what blocking
+        tames. A nominal $\{a\}$ must denote one fixed element wherever it
+        occurs, acting as a global merge point onto which edges fold back,
+        destroying treeness. When $\dl{O}$, $\dl{I}$ and $\dl{Q}$ coincide one
+        gets the notorious \emph{yo-yo} interaction --- the technical heart of
+        the $\dl{SHOIQ}$ tableau (Horrocks \& Sattler, 2005).
+\end{itemize}
+
+\section{Complexity: the payoff for every letter}
+
+The choice of letters is not bookkeeping --- it is a choice of
+\emph{worst-case cost}. For concept satisfiability (with respect to a general
+TBox):
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Logic & Complexity \\
+\midrule
+$\dl{ALC}$, \; $\dl{S}$, \; $\dl{SHIN}$                & \textsc{ExpTime}-complete \\
+$\dl{SHOIN}$, \; $\dl{SHOIQ}$ \;(OWL\,1 DL)            & \textsc{NExpTime}-complete \\
+$\dl{SROIQ}$ \;(OWL\,2 DL)                             & \textsc{N2ExpTime}-complete \\
+\midrule
+$\dl{EL}^{++}$ \;(OWL\,2 EL profile)                   & \textsc{PTime}-complete \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Adding nominals ($\dl{O}$) to $\dl{SHIN}$/$\dl{SHIQ}$ is precisely the step that
+lifts satisfiability from \textsc{ExpTime} to \textsc{NExpTime}: nominals add
+genuine logical power (global identity reasoning), and you pay for it.
+
+Conversely, OWL\,2 defines three \textbf{profiles} --- \textbf{EL}, \textbf{QL},
+\textbf{RL} --- that deliberately \emph{drop} letters to buy tractability. The
+logic $\dl{EL}^{++}$ behind the \textbf{EL} profile discards negation,
+disjunction, inverse roles and cardinalities, keeping essentially only $\inter$
+and $\exists$; in return, classification drops to \emph{polynomial} time. This
+is why SNOMED\,CT, a medical ontology of some $350{,}000$ classes, is expressed
+in EL and classifies in practice.
+
+\section{Where to go next}
+
+\begin{itemize}[nosep]
+  \item \textbf{Building or auditing an ontology:} the live question is which
+        profile you can afford, and whether a stray
+        inverse-plus-cardinality axiom is silently costing tractability.
+  \item \textbf{Implementing a reasoner:} the work is tableau mechanics,
+        blocking strategies, and the nominal-merging bookkeeping of $\dl{SHOIQ}$.
+  \item \textbf{Studying the formalism:} complexity frontiers, the tree-model
+        property, and the boundary of decidability.
+\end{itemize}
+
+\paragraph{Further reading.} Baader, Horrocks, Lutz \& Sattler, \emph{An
+Introduction to Description Logic} (CUP, 2017); the \emph{Description Logic
+Handbook} (2nd ed., 2007); Horrocks \& Sattler, ``A Tableau Decision Procedure
+for $\mathcal{SHOIQ}$'' (IJCAI 2005); the W3C \emph{OWL~2 Primer} and
+\emph{OWL~2 Profiles} recommendations.
+
+\end{document}
